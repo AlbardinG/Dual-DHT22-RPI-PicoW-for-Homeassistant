@@ -9,7 +9,7 @@
 
 
 
-from machine import Pin
+import machine
 import dht
 import time
 import ubinascii
