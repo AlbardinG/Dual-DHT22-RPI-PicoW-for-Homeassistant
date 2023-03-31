@@ -9,34 +9,37 @@
 
 
 
-import machine
+from machine import Pin
 import dht
 import time
 import ubinascii
 import network
-import rp2
-from umqtt_simple import MQTTClient
+from  umqtt_simple import MQTTClient
 
 ### Setup
 #led setup
-led = Pin("LED", Pin.OUT, value=1)
+led = machine.Pin("LED", Pin.OUT, value=1)
 led.off()
 
-# Wifi settings
-ssid = 'Wireless Network'
-password = 'The Password'
+
 
 # MQTT Setup
-BROKER = 'your_broker_hostname_or_ip'
+BROKER = '***.***.***.***'
 PORT = 1883
-TOPIC = 'sensor'
-client_id = 'Pico-' + ubinascii.hexlify(machine.unique_id()).decode() # Generate a unique client ID for MQTT
-client = MQTTClient(client_id, BROKER, PORT)
+TOPIC = '***'
+user = '***'
+mpassword = '***'
+client_id = str(time.time())
+client = MQTTClient(client_id, BROKER, PORT, user, mpassword)
 
 # Wifi init
-rp2.country('AU')
+network.country("AU")
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
+ap_list = wlan.scan()
+ssid = '***'
+password = '***'
+
 
 # Configure the pins for the DHT22 sensors
 dht_sensor1 = dht.DHT22(machine.Pin(3))
@@ -49,25 +52,23 @@ def conn_check():
         if wlan.status() == 0:
             wlan.connect(ssid, password)
         elif wlan.status() == 1:
-            blink_led(0.5, 1)
+            blink_led(0.2, 1)
             time.sleep(2)
         elif wlan.status() == 2:
-            blink_led(0.5, 2)
+            blink_led(0.2, 2)
             time.sleep(2)
         elif wlan.status() == 3:
             led.on()
+            print('Connected')
             break
         elif wlan.status() == -1:
-            blink_led(0.5, 3)
-            wlan.connect(ssid, password)
+            blink_led(0.2, 3)
             time.sleep(2)
         elif wlan.status() == -2:
-            blink_led(0.5, 4)
-            wlan.connect(ssid, password)
+            blink_led(0.2, 4)
             time.sleep(2)
         elif wlan.status() == -3:
-            blink_led(0.5, 5)
-            wlan.connect(ssid, password)
+            blink_led(0.2, 5)
             time.sleep(2)
         else:
             blink_led(0.1, 10)
@@ -91,16 +92,40 @@ def read_dht22_data(sensor):
         humidity = sensor.humidity()
         return temperature, humidity
     except OSError:
-        blink_led(0.5, 6)
+        blink_led(0.2, 6)
         time.sleep(2)
-        led.on
+        led.on()
         return None, None
+
+def reconnect():
+    attempt = 0
+    while True:
+        try:
+            client.connect()
+            print('Successfully connected to the MQTT broker')
+            break
+        except OSError as e:
+            attempt += 1
+            print('Failed to connect to the MQTT broker (attempt {}): {}'.format(attempt, e))
+            if attempt >= 5:
+                print('Max connection attempts reached. Resetting the device...')
+                time.sleep(5)
+                machine.reset()
+            time.sleep(5)
+
+
+
 
 # Send average data to Broker
 def send_payload():
     temperature1, humidity1 = read_dht22_data(dht_sensor1)
     temperature2, humidity2 = read_dht22_data(dht_sensor2)
-    client.connect()#mqtt connect
+    try:
+        client.connect()
+    except OSError as e:
+        reconnect()
+        
+    
     if temperature1 is not None and humidity1 is not None and temperature2 is not None and humidity2 is not None:
         
         avg_temperature = (temperature1 + temperature2) / 2
@@ -112,14 +137,16 @@ def send_payload():
     else:
         print("Failed to read data from one or both sensors")
     client.disconnect()
-    
+    wlan.disconnect()
+    led.off()
     
 ###main loop        
 while True:
-    if machine.Pin(7, machine.IN, machine.PULL_UP).value() == 1:
-        break
-    else:
-        conn_check()
-        send_payload()
+    conn_check()
+    send_payload()
+    print("done")
     time.sleep(30)  # Wait for 30 seconds before reading again
     
+
+
+
